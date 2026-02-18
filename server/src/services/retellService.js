@@ -52,19 +52,23 @@ async function triggerCall(contact, callPhase) {
       },
     });
 
-    // Trigger the Retell call — drop if voicemail/machine detected
+    // Trigger the Retell call — hang up if voicemail detected
     const retellCall = await retellClient.call.createPhoneCall({
       from_number: callPhase === 'FIRST_CALL'
         ? config.retell.fromNumberCall1
         : config.retell.fromNumberCall2,
       to_number: contact.phone,
       agent_id: agentId,
-      drop_if_machine_detected: true,
       retell_llm_dynamic_variables: retellMetadata,
       metadata: {
         callLogId: callLog.id,
         contactId: contact.id,
         callPhase,
+      },
+      override_agent_config: {
+        voicemail_option: {
+          action: { type: 'hangup' },
+        },
       },
     });
 
@@ -114,20 +118,21 @@ async function processCallWebhook(webhookData) {
   }
 
   // Map Retell status to our outcome enum
+  const inVoicemail = call_analysis?.in_voicemail === true;
   let outcome = 'NO_ANSWER';
+
   if (call_status === 'ended' || call_status === 'ended_by_agent') {
-    // If the call actually connected and had a conversation
-    if (disconnection_reason === 'agent_hangup' || disconnection_reason === 'user_hangup') {
-      outcome = 'CONNECTED';
-    } else if (disconnection_reason === 'voicemail_reached') {
+    if (disconnection_reason === 'voicemail_reached' || disconnection_reason === 'machine_detected' || inVoicemail) {
       outcome = 'VOICEMAIL';
+    } else if (disconnection_reason === 'agent_hangup' || disconnection_reason === 'user_hangup') {
+      outcome = 'CONNECTED';
     } else if (disconnection_reason === 'no_answer') {
       outcome = 'NO_ANSWER';
     } else if (disconnection_reason === 'busy') {
       outcome = 'BUSY';
     } else {
-      // For other end reasons, check if there was meaningful conversation
-      outcome = 'CONNECTED';
+      // Unknown disconnection reason — don't assume connected
+      outcome = 'NO_ANSWER';
     }
   } else if (call_status === 'error') {
     outcome = 'FAILED';
