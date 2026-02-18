@@ -1,5 +1,6 @@
 const express = require('express');
 const prisma = require('../db');
+const { triggerCall } = require('../services/retellService');
 const router = express.Router();
 
 /**
@@ -174,6 +175,41 @@ router.get('/contact/:id', async (req, res) => {
   } catch (error) {
     console.error('[Dashboard] Error fetching contact:', error.message);
     res.status(500).json({ error: 'Failed to fetch contact' });
+  }
+});
+
+/**
+ * POST /api/dashboard/call/:contactId
+ * Manually trigger a call for a contact.
+ * Body: { callPhase: "FIRST_CALL" | "SECOND_CALL" }
+ */
+router.post('/call/:contactId', async (req, res) => {
+  try {
+    const { callPhase } = req.body;
+
+    if (!callPhase || !['FIRST_CALL', 'SECOND_CALL'].includes(callPhase)) {
+      return res.status(400).json({ error: 'callPhase must be "FIRST_CALL" or "SECOND_CALL"' });
+    }
+
+    const contact = await prisma.contact.findUnique({
+      where: { id: req.params.contactId },
+    });
+
+    if (!contact) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    if (!contact.phone) {
+      return res.status(400).json({ error: 'Contact has no phone number' });
+    }
+
+    console.log(`[Dashboard] Manual ${callPhase} triggered for ${contact.firstName} ${contact.lastName}`);
+    const callLog = await triggerCall(contact, callPhase);
+
+    res.json({ success: true, callLogId: callLog.id, callPhase });
+  } catch (error) {
+    console.error('[Dashboard] Error triggering manual call:', error.message);
+    res.status(500).json({ error: 'Failed to trigger call' });
   }
 });
 

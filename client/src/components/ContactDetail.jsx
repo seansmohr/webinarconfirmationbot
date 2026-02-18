@@ -1,5 +1,5 @@
-import React from 'react';
-import { useContactDetail } from '../hooks/useDashboard.js';
+import React, { useState } from 'react';
+import { useContactDetail, triggerManualCall } from '../hooks/useDashboard.js';
 import StatusBubble, { getCall1Variant, getCall2Variant } from './StatusBubble.jsx';
 import WebinarTagBadge from './WebinarTagBadge.jsx';
 
@@ -41,6 +41,23 @@ function outcomeColor(outcome) {
 
 export default function ContactDetail({ contactId, onClose }) {
   const { data, loading } = useContactDetail(contactId);
+  const [calling, setCalling] = useState(null); // 'FIRST_CALL' | 'SECOND_CALL' | null
+  const [callError, setCallError] = useState(null);
+  const [callSuccess, setCallSuccess] = useState(null);
+
+  async function handleTriggerCall(callPhase) {
+    setCalling(callPhase);
+    setCallError(null);
+    setCallSuccess(null);
+    try {
+      await triggerManualCall(contactId, callPhase);
+      setCallSuccess(`${callPhase === 'FIRST_CALL' ? 'Call 1' : 'Call 2'} triggered successfully`);
+    } catch (err) {
+      setCallError(err.message);
+    } finally {
+      setCalling(null);
+    }
+  }
 
   if (loading) {
     return (
@@ -113,6 +130,30 @@ export default function ContactDetail({ contactId, onClose }) {
               />
             </div>
           </div>
+
+          {/* Manual Call Buttons */}
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              onClick={() => handleTriggerCall('FIRST_CALL')}
+              disabled={calling !== null}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {calling === 'FIRST_CALL' ? 'Calling...' : 'Trigger Call 1'}
+            </button>
+            <button
+              onClick={() => handleTriggerCall('SECOND_CALL')}
+              disabled={calling !== null}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {calling === 'SECOND_CALL' ? 'Calling...' : 'Trigger Call 2'}
+            </button>
+          </div>
+          {callSuccess && (
+            <p className="mt-2 text-sm text-emerald-600">{callSuccess}</p>
+          )}
+          {callError && (
+            <p className="mt-2 text-sm text-red-600">{callError}</p>
+          )}
         </div>
 
         {/* Call History */}
