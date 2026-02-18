@@ -1,0 +1,88 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Contact {
+  id              String    @id @default(uuid())
+  ghlContactId    String    @unique @map("ghl_contact_id")
+  firstName       String?   @map("first_name")
+  lastName        String?   @map("last_name")
+  phone           String?
+  email           String?
+  timezone        String?   @default("America/Chicago")
+  webinarTag      String    @map("webinar_tag")
+  pipelineStage   String?   @map("pipeline_stage")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  registeredAt    DateTime  @map("registered_at")
+
+  callLogs        CallLog[]
+
+  @@map("contacts")
+}
+
+enum CallPhase {
+  FIRST_CALL
+  SECOND_CALL
+}
+
+enum CallOutcome {
+  CONNECTED
+  NO_ANSWER
+  VOICEMAIL
+  BUSY
+  FAILED
+  PENDING
+}
+
+enum ConfirmationStatus {
+  CONFIRMED
+  NOT_CONFIRMED
+  PENDING
+}
+
+model CallLog {
+  id                  String              @id @default(uuid())
+  contactId           String              @map("contact_id")
+  callPhase           CallPhase           @map("call_phase")
+  attemptNumber       Int                 @map("attempt_number")
+  scheduledAt         DateTime            @map("scheduled_at")
+  calledAt            DateTime?           @map("called_at")
+  outcome             CallOutcome         @default(PENDING)
+  confirmationStatus  ConfirmationStatus? @map("confirmation_status")
+  retellCallId        String?             @map("retell_call_id")
+  duration            Int?
+  notes               String?
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+
+  contact             Contact             @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId])
+  @@index([callPhase])
+  @@index([scheduledAt])
+  @@map("call_logs")
+}
+
+model SchedulerState {
+  id              String    @id @default(uuid())
+  contactId       String    @unique @map("contact_id")
+  currentPhase    CallPhase @map("current_phase")
+  nextCallTime    DateTime? @map("next_call_time")
+  attemptsToday   Int       @default(0) @map("attempts_today")
+  totalAttempts   Int       @default(0) @map("total_attempts")
+  isComplete      Boolean   @default(false) @map("is_complete")
+  completedCall1  Boolean   @default(false) @map("completed_call_1")
+  completedCall2  Boolean   @default(false) @map("completed_call_2")
+  confirmedCall2  Boolean   @default(false) @map("confirmed_call_2")
+  lastCallDate    DateTime? @map("last_call_date")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@map("scheduler_state")
+}
