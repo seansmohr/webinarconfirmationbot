@@ -112,6 +112,33 @@ function extractWebinarTag(tags) {
 }
 
 /**
+ * Remove contacts from the local DB whose webinarTag is not in the active list.
+ * Also cleans up their SchedulerState records.
+ */
+async function pruneInactiveContacts(activeTags) {
+  const staleContacts = await prisma.contact.findMany({
+    where: { webinarTag: { notIn: activeTags } },
+    select: { id: true, firstName: true, lastName: true, webinarTag: true },
+  });
+
+  if (staleContacts.length === 0) return 0;
+
+  const staleIds = staleContacts.map((c) => c.id);
+  console.log(`[GHL Sync] Removing ${staleContacts.length} contacts not matching active tags [${activeTags.join(', ')}]:`);
+  for (const c of staleContacts) {
+    console.log(`[GHL Sync]   - "${c.firstName} ${c.lastName}" (tag: ${c.webinarTag})`);
+  }
+
+  // Delete SchedulerState records first (no cascade relation)
+  await prisma.schedulerState.deleteMany({ where: { contactId: { in: staleIds } } });
+  // Delete contacts (CallLogs cascade automatically)
+  await prisma.contact.deleteMany({ where: { id: { in: staleIds } } });
+
+  console.log(`[GHL Sync] Removed ${staleContacts.length} stale contacts and their scheduler/call data.`);
+  return staleContacts.length;
+}
+
+/**
  * Sync contacts from GHL into our local database.
  * Only syncs contacts that have a valid webinar tag.
  */
@@ -158,7 +185,11 @@ async function syncContacts() {
   }
 
   console.log(`[GHL Sync] Done. Synced: ${synced}, Skipped (no tag): ${skipped}`);
-  return { synced, skipped };
+
+  // Clean up contacts that don't match the active filter
+  const removed = await pruneInactiveContacts(activeTags);
+
+  return { synced, skipped, removed };
 }
 
 /**
