@@ -2,6 +2,7 @@ const Retell = require('retell-sdk');
 const config = require('../config');
 const prisma = require('../db');
 const { getWebinarLabel } = require('./webinarDateResolver');
+const { addTagToContact } = require('./ghlService');
 
 const retellClient = new Retell({
   apiKey: config.retell.apiKey,
@@ -166,6 +167,21 @@ async function processCallWebhook(webhookData) {
       where: { contactId: callLog.contactId },
       data: updateData,
     });
+
+    // Add confirmation tags back to GHL
+    const contact = await prisma.contact.findUnique({
+      where: { id: callLog.contactId },
+      select: { ghlContactId: true },
+    });
+
+    if (contact?.ghlContactId) {
+      if (callLog.callPhase === 'FIRST_CALL') {
+        addTagToContact(contact.ghlContactId, 'confirmed webinar registration');
+      }
+      if (callLog.callPhase === 'SECOND_CALL' && confirmationStatus === 'CONFIRMED') {
+        addTagToContact(contact.ghlContactId, 'confirmed webinar attendance');
+      }
+    }
   }
 
   console.log(

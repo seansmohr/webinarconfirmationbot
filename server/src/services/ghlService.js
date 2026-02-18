@@ -101,14 +101,39 @@ async function getContact(contactId) {
 
 /**
  * Extract the webinar tag from a GHL contact's tags array.
- * Only returns a tag if the contact has exactly ONE tag and it's a valid webinar tag.
- * Contacts with multiple tags (e.g. "missed webinar", "attended webinar") are skipped.
+ * Finds the first valid webinar tag among possibly multiple tags
+ * (e.g. a contact may also have "confirmed webinar registration").
  */
 function extractWebinarTag(tags) {
-  if (!tags || !Array.isArray(tags) || tags.length !== 1) return null;
-  const tag = tags[0].toLowerCase().trim();
+  if (!tags || !Array.isArray(tags) || tags.length === 0) return null;
   const activeTags = ACTIVE_WEBINAR_TAGS || VALID_WEBINAR_TAGS;
-  return activeTags.includes(tag) ? tag : null;
+  for (const t of tags) {
+    const normalized = t.toLowerCase().trim();
+    if (activeTags.includes(normalized)) return normalized;
+  }
+  return null;
+}
+
+/**
+ * Add a tag to a GHL contact. Fetches current tags first to avoid overwriting.
+ */
+async function addTagToContact(ghlContactId, tag) {
+  try {
+    const contact = await getContact(ghlContactId);
+    const currentTags = contact.tags || [];
+
+    // Don't add if already present
+    if (currentTags.some((t) => t.toLowerCase().trim() === tag.toLowerCase().trim())) {
+      console.log(`[GHL Tag] Contact ${ghlContactId} already has tag "${tag}", skipping.`);
+      return;
+    }
+
+    const updatedTags = [...currentTags, tag];
+    await ghlApi.put(`/contacts/${ghlContactId}`, { tags: updatedTags });
+    console.log(`[GHL Tag] Added "${tag}" to contact ${ghlContactId}`);
+  } catch (error) {
+    console.error(`[GHL Tag] Failed to add tag "${tag}" to contact ${ghlContactId}:`, error.response?.data || error.message);
+  }
 }
 
 /**
@@ -228,6 +253,7 @@ module.exports = {
   fetchContacts,
   getContact,
   extractWebinarTag,
+  addTagToContact,
   syncContacts,
   processWebhookContact,
 };
