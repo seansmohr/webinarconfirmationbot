@@ -78,12 +78,17 @@ function extractWebinarTag(tags) {
  */
 async function syncContacts() {
   console.log('[GHL Sync] Starting contact sync...');
+  console.log('[GHL Sync] Valid webinar tags:', VALID_WEBINAR_TAGS);
   const ghlContacts = await fetchContacts();
+  console.log(`[GHL Sync] Fetched ${ghlContacts.length} total contacts from GHL`);
   let synced = 0;
   let skipped = 0;
 
   for (const ghlContact of ghlContacts) {
+    const name = `${ghlContact.firstName || ''} ${ghlContact.lastName || ''}`.trim();
+    console.log(`[GHL Sync] Contact "${name}" (${ghlContact.id}) — raw tags:`, JSON.stringify(ghlContact.tags));
     const webinarTag = extractWebinarTag(ghlContact.tags);
+    console.log(`[GHL Sync]   → extracted webinar tag: ${webinarTag || 'NONE (skipping)'}`);
     if (!webinarTag) {
       skipped++;
       continue;
