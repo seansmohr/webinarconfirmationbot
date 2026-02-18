@@ -5,6 +5,7 @@ const TAG_COLORS = {
   'tuesday 6pm': 'bg-violet-100 text-violet-700 border-violet-200',
   'thursday 1pm': 'bg-sky-100 text-sky-700 border-sky-200',
   'saturday 11am': 'bg-rose-100 text-rose-700 border-rose-200',
+  'wednesday 9am': 'bg-amber-100 text-amber-700 border-amber-200',
 };
 
 const TAG_LABELS = {
@@ -12,6 +13,7 @@ const TAG_LABELS = {
   'tuesday 6pm': 'Tue 6pm CST',
   'thursday 1pm': 'Thu 1pm CST',
   'saturday 11am': 'Sat 11am CST',
+  'wednesday 9am': 'Wed 9am PST',
 };
 
 export default function WebinarTagBadge({ tag }) {
