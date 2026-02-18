@@ -25,7 +25,7 @@ module.exports = {
     'tuesday 6pm':   { dayOfWeek: 2, hourCST: 18, minuteCST: 0, label: 'Tuesday 6:00 PM CST' },
     'thursday 1pm':  { dayOfWeek: 4, hourCST: 13, minuteCST: 0, label: 'Thursday 1:00 PM CST' },
     'saturday 11am': { dayOfWeek: 6, hourCST: 11, minuteCST: 0, label: 'Saturday 11:00 AM CST' },
-    'wednesday 9am': { dayOfWeek: 3, hourCST: 11, minuteCST: 0, label: 'Wednesday 9:00 AM PST / 11:00 AM CST' },
+    'friday 5pm': { dayOfWeek: 5, hourCST: 19, minuteCST: 0, label: 'Friday 5:00 PM PST / 7:00 PM CST' },
   },
   // Call windows in PST (24h format)
   callWindows: [9, 13, 17], // 9am, 1pm, 5pm PST

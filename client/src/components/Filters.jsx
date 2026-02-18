@@ -6,7 +6,7 @@ const WEBINAR_TAGS = [
   { value: 'tuesday 6pm', label: 'Tuesday 6pm CST' },
   { value: 'thursday 1pm', label: 'Thursday 1pm CST' },
   { value: 'saturday 11am', label: 'Saturday 11am CST' },
-  { value: 'wednesday 9am', label: 'Wednesday 9am PST (Test)' },
+  { value: 'friday 5pm', label: 'Friday 5pm PST (Test)' },
 ];
 
 const STATUS_FILTERS = [
