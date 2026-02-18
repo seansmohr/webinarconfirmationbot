@@ -10,6 +10,7 @@ module.exports = {
     apiKey: process.env.RETELL_API_KEY,
     agentIdCall1: process.env.RETELL_AGENT_ID_CALL1,
     agentIdCall2: process.env.RETELL_AGENT_ID_CALL2,
+    fromNumber: process.env.RETELL_FROM_NUMBER,
   },
   db: {
     url: process.env.DATABASE_URL,

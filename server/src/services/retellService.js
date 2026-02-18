@@ -54,7 +54,7 @@ async function triggerCall(contact, callPhase) {
 
     // Trigger the Retell call — drop if voicemail/machine detected
     const retellCall = await retellClient.call.createPhoneCall({
-      from_number: null, // Uses Retell default number
+      from_number: config.retell.fromNumber,
       to_number: contact.phone,
       agent_id: agentId,
       drop_if_machine_detected: true,
