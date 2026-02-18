@@ -4,6 +4,9 @@ const prisma = require('../db');
 
 const VALID_WEBINAR_TAGS = Object.keys(config.webinarSchedule);
 
+// Only sync these tags during testing — set to null to sync all valid webinar tags
+const ACTIVE_WEBINAR_TAGS = ['friday 5pm'];
+
 const ghlApi = axios.create({
   baseURL: config.ghl.baseUrl,
   headers: {
@@ -21,7 +24,7 @@ async function fetchContacts() {
     const contacts = [];
     let startAfterId = null;
     let page = 0;
-    const MAX_PAGES = 50; // Safety limit to prevent infinite loops
+    const MAX_PAGES = 100; // Safety limit to prevent infinite loops
 
     do {
       page++;
@@ -39,13 +42,31 @@ async function fetchContacts() {
       const data = response.data;
 
       const pageContacts = data.contacts || [];
-      console.log(`[GHL Fetch] Page ${page} returned ${pageContacts.length} contacts`);
+      console.log(`[GHL Fetch] Page ${page} returned ${pageContacts.length} contacts (meta: ${JSON.stringify(data.meta || {})})`);
 
-      if (pageContacts.length > 0) {
-        contacts.push(...pageContacts);
-        // Use the last contact's ID as the cursor for the next page
+      if (pageContacts.length === 0) break;
+
+      contacts.push(...pageContacts);
+
+      // Determine the next cursor
+      const prevCursor = startAfterId;
+      // Try to extract cursor from nextPageUrl first (most reliable)
+      if (data.meta?.nextPageUrl) {
+        try {
+          const url = new URL(data.meta.nextPageUrl);
+          startAfterId = url.searchParams.get('startAfterId') || url.searchParams.get('startAfter') || null;
+        } catch {
+          startAfterId = null;
+        }
+      }
+      // Fall back to meta.startAfterId, then last contact ID
+      if (!startAfterId) {
         startAfterId = data.meta?.startAfterId || pageContacts[pageContacts.length - 1].id;
-      } else {
+      }
+
+      // If cursor didn't advance, we're stuck — stop
+      if (startAfterId === prevCursor) {
+        console.warn(`[GHL Fetch] Cursor did not advance (stuck at ${startAfterId}), stopping.`);
         break;
       }
 
@@ -54,10 +75,10 @@ async function fetchContacts() {
     } while (page < MAX_PAGES);
 
     if (page >= MAX_PAGES) {
-      console.warn(`[GHL Fetch] Hit max page limit (${MAX_PAGES}). Some contacts may be missing.`);
+      console.warn(`[GHL Fetch] Hit max page limit (${MAX_PAGES}).`);
     }
 
-    console.log(`[GHL Fetch] Total contacts fetched: ${contacts.length}`);
+    console.log(`[GHL Fetch] Total contacts fetched: ${contacts.length} across ${page} pages`);
     return contacts;
   } catch (error) {
     console.error('Error fetching contacts from GHL:', error.response?.data || error.message);
@@ -80,12 +101,14 @@ async function getContact(contactId) {
 
 /**
  * Extract the webinar tag from a GHL contact's tags array.
- * Returns the first matching webinar tag or null.
+ * Only returns a tag if the contact has exactly ONE tag and it's a valid webinar tag.
+ * Contacts with multiple tags (e.g. "missed webinar", "attended webinar") are skipped.
  */
 function extractWebinarTag(tags) {
-  if (!tags || !Array.isArray(tags)) return null;
-  const normalizedTags = tags.map((t) => t.toLowerCase().trim());
-  return VALID_WEBINAR_TAGS.find((vt) => normalizedTags.includes(vt)) || null;
+  if (!tags || !Array.isArray(tags) || tags.length !== 1) return null;
+  const tag = tags[0].toLowerCase().trim();
+  const activeTags = ACTIVE_WEBINAR_TAGS || VALID_WEBINAR_TAGS;
+  return activeTags.includes(tag) ? tag : null;
 }
 
 /**
@@ -93,8 +116,9 @@ function extractWebinarTag(tags) {
  * Only syncs contacts that have a valid webinar tag.
  */
 async function syncContacts() {
+  const activeTags = ACTIVE_WEBINAR_TAGS || VALID_WEBINAR_TAGS;
   console.log('[GHL Sync] Starting contact sync...');
-  console.log('[GHL Sync] Valid webinar tags:', VALID_WEBINAR_TAGS);
+  console.log('[GHL Sync] Active webinar tags:', activeTags);
   const ghlContacts = await fetchContacts();
   console.log(`[GHL Sync] Fetched ${ghlContacts.length} total contacts from GHL`);
   let synced = 0;
