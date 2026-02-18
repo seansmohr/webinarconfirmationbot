@@ -19,29 +19,45 @@ const ghlApi = axios.create({
 async function fetchContacts() {
   try {
     const contacts = [];
-    let nextPageUrl = null;
+    let startAfterId = null;
+    let page = 0;
+    const MAX_PAGES = 50; // Safety limit to prevent infinite loops
 
-    // Paginate through all contacts in the location
     do {
+      page++;
       const params = {
         locationId: config.ghl.locationId,
         limit: 100,
       };
 
-      if (nextPageUrl) {
-        params.startAfterId = nextPageUrl;
+      if (startAfterId) {
+        params.startAfterId = startAfterId;
       }
 
+      console.log(`[GHL Fetch] Page ${page} — startAfterId: ${startAfterId || '(first page)'}`);
       const response = await ghlApi.get('/contacts/', { params });
       const data = response.data;
 
-      if (data.contacts && data.contacts.length > 0) {
-        contacts.push(...data.contacts);
+      const pageContacts = data.contacts || [];
+      console.log(`[GHL Fetch] Page ${page} returned ${pageContacts.length} contacts`);
+
+      if (pageContacts.length > 0) {
+        contacts.push(...pageContacts);
+        // Use the last contact's ID as the cursor for the next page
+        startAfterId = data.meta?.startAfterId || pageContacts[pageContacts.length - 1].id;
+      } else {
+        break;
       }
 
-      nextPageUrl = data.meta?.nextPageUrl || null;
-    } while (nextPageUrl);
+      // Stop if GHL signals no more pages
+      if (!data.meta?.nextPageUrl) break;
+    } while (page < MAX_PAGES);
 
+    if (page >= MAX_PAGES) {
+      console.warn(`[GHL Fetch] Hit max page limit (${MAX_PAGES}). Some contacts may be missing.`);
+    }
+
+    console.log(`[GHL Fetch] Total contacts fetched: ${contacts.length}`);
     return contacts;
   } catch (error) {
     console.error('Error fetching contacts from GHL:', error.response?.data || error.message);
