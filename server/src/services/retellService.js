@@ -131,24 +131,39 @@ async function processCallWebhook(webhookData) {
     outcome = 'FAILED';
   }
 
-  // Check call analysis for confirmation (Call 2)
+  // Extract custom analysis fields from the Retell post-call analysis
+  const customData = call_analysis?.custom_analysis_data || {};
+  const callDisposition = customData.call_disposition || null;
+  const declineReason = customData.decline_reason || null;
+
+  // Determine confirmation status based on call phase and custom analysis fields
   let confirmationStatus = null;
-  if (callLog.callPhase === 'SECOND_CALL' && outcome === 'CONNECTED') {
-    // Check if the Retell agent detected confirmation in the conversation
-    if (call_analysis?.custom_analysis_data?.confirmed === true ||
-        call_analysis?.call_summary?.toLowerCase().includes('confirmed')) {
-      confirmationStatus = 'CONFIRMED';
-    } else {
-      confirmationStatus = 'NOT_CONFIRMED';
+  if (outcome === 'CONNECTED') {
+    if (callLog.callPhase === 'FIRST_CALL') {
+      // Call 1 agent uses "registration_confirmed" boolean
+      if (customData.registration_confirmed === true) {
+        confirmationStatus = 'CONFIRMED';
+      } else {
+        confirmationStatus = 'NOT_CONFIRMED';
+      }
+    } else if (callLog.callPhase === 'SECOND_CALL') {
+      // Call 2 agent uses "confirmed_attendance" boolean
+      if (customData.confirmed_attendance === true) {
+        confirmationStatus = 'CONFIRMED';
+      } else {
+        confirmationStatus = 'NOT_CONFIRMED';
+      }
     }
   }
 
-  // Update the call log
+  // Update the call log with outcome, confirmation, disposition, and decline reason
   const updatedLog = await prisma.callLog.update({
     where: { id: callLog.id },
     data: {
       outcome,
       confirmationStatus,
+      callDisposition,
+      declineReason,
       duration: webhookData.duration_ms ? Math.round(webhookData.duration_ms / 1000) : null,
       notes: call_analysis?.call_summary || null,
     },
@@ -156,11 +171,20 @@ async function processCallWebhook(webhookData) {
 
   // Update scheduler state
   if (outcome === 'CONNECTED') {
-    const field = callLog.callPhase === 'FIRST_CALL' ? 'completedCall1' : 'completedCall2';
-    const updateData = { [field]: true };
+    const isCall1 = callLog.callPhase === 'FIRST_CALL';
+    const completedField = isCall1 ? 'completedCall1' : 'completedCall2';
+    const updateData = { [completedField]: true };
 
-    if (confirmationStatus === 'CONFIRMED') {
+    if (isCall1 && confirmationStatus === 'CONFIRMED') {
+      updateData.confirmedCall1 = true;
+    }
+    if (!isCall1 && confirmationStatus === 'CONFIRMED') {
       updateData.confirmedCall2 = true;
+    }
+
+    // If disposition is "Wrong Number", stop all calling for this contact
+    if (callDisposition === 'Wrong Number') {
+      updateData.isComplete = true;
     }
 
     await prisma.schedulerState.updateMany({
@@ -168,17 +192,17 @@ async function processCallWebhook(webhookData) {
       data: updateData,
     });
 
-    // Add confirmation tags back to GHL
+    // Add confirmation tags back to GHL based on actual confirmation
     const contact = await prisma.contact.findUnique({
       where: { id: callLog.contactId },
       select: { ghlContactId: true },
     });
 
     if (contact?.ghlContactId) {
-      if (callLog.callPhase === 'FIRST_CALL') {
+      if (isCall1 && confirmationStatus === 'CONFIRMED') {
         addTagToContact(contact.ghlContactId, 'confirmed webinar registration');
       }
-      if (callLog.callPhase === 'SECOND_CALL' && confirmationStatus === 'CONFIRMED') {
+      if (!isCall1 && confirmationStatus === 'CONFIRMED') {
         addTagToContact(contact.ghlContactId, 'confirmed webinar attendance');
       }
     }
@@ -186,7 +210,8 @@ async function processCallWebhook(webhookData) {
 
   console.log(
     `[Retell Webhook] Call ${call_id}: outcome=${outcome}, ` +
-    `confirmation=${confirmationStatus || 'N/A'}`
+    `confirmation=${confirmationStatus || 'N/A'}, ` +
+    `disposition=${callDisposition || 'N/A'}`
   );
 
   return updatedLog;

@@ -50,8 +50,13 @@ router.get('/contacts', async (req, res) => {
       const call2Logs = contact.callLogs.filter((l) => l.callPhase === 'SECOND_CALL');
 
       const call1Connected = call1Logs.some((l) => l.outcome === 'CONNECTED');
+      const call1Confirmed = call1Logs.some((l) => l.confirmationStatus === 'CONFIRMED');
       const call2Connected = call2Logs.some((l) => l.outcome === 'CONNECTED');
       const call2Confirmed = call2Logs.some((l) => l.confirmationStatus === 'CONFIRMED');
+
+      // Get the latest connected call log for each phase (for disposition/reason)
+      const latestCall1 = call1Logs.find((l) => l.outcome === 'CONNECTED');
+      const latestCall2 = call2Logs.find((l) => l.outcome === 'CONNECTED');
 
       return {
         id: contact.id,
@@ -66,9 +71,16 @@ router.get('/contacts', async (req, res) => {
 
         // Call 1 status
         call1: {
-          status: call1Connected ? 'connected' : (call1Logs.length > 0 ? 'attempted' : 'pending'),
+          status: call1Confirmed
+            ? 'confirmed'
+            : call1Connected
+              ? 'connected'
+              : (call1Logs.length > 0 ? 'attempted' : 'pending'),
           attempts: call1Logs.length,
           connected: call1Connected,
+          confirmed: call1Confirmed,
+          disposition: latestCall1?.callDisposition || null,
+          declineReason: latestCall1?.declineReason || null,
           lastAttempt: call1Logs[0]?.calledAt || null,
         },
 
@@ -82,6 +94,8 @@ router.get('/contacts', async (req, res) => {
           attempts: call2Logs.length,
           connected: call2Connected,
           confirmed: call2Confirmed,
+          disposition: latestCall2?.callDisposition || null,
+          declineReason: latestCall2?.declineReason || null,
           lastAttempt: call2Logs[0]?.calledAt || null,
         },
 
@@ -123,6 +137,7 @@ router.get('/stats', async (req, res) => {
 
     const schedulerStates = await prisma.schedulerState.findMany();
     const call1Connected = schedulerStates.filter((s) => s.completedCall1).length;
+    const call1Confirmed = schedulerStates.filter((s) => s.confirmedCall1).length;
     const call2Connected = schedulerStates.filter((s) => s.completedCall2).length;
     const call2Confirmed = schedulerStates.filter((s) => s.confirmedCall2).length;
     const activeSchedules = schedulerStates.filter((s) => !s.isComplete).length;
@@ -135,6 +150,7 @@ router.get('/stats', async (req, res) => {
     res.json({
       totalContacts,
       call1Connected,
+      call1Confirmed,
       call2Connected,
       call2Confirmed,
       activeSchedules,

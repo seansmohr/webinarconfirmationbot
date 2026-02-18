@@ -55,6 +55,8 @@ model CallLog {
   calledAt            DateTime?           @map("called_at")
   outcome             CallOutcome         @default(PENDING)
   confirmationStatus  ConfirmationStatus? @map("confirmation_status")
+  callDisposition     String?             @map("call_disposition")
+  declineReason       String?             @map("decline_reason")
   retellCallId        String?             @map("retell_call_id")
   duration            Int?
   notes               String?
@@ -79,6 +81,7 @@ model SchedulerState {
   isComplete      Boolean   @default(false) @map("is_complete")
   completedCall1  Boolean   @default(false) @map("completed_call_1")
   completedCall2  Boolean   @default(false) @map("completed_call_2")
+  confirmedCall1  Boolean   @default(false) @map("confirmed_call_1")
   confirmedCall2  Boolean   @default(false) @map("confirmed_call_2")
   lastCallDate    DateTime? @map("last_call_date")
   createdAt       DateTime  @default(now()) @map("created_at")
