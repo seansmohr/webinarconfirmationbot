@@ -1,7 +1,10 @@
 const express = require('express');
+const { DateTime } = require('luxon');
 const prisma = require('../db');
 const { triggerCall } = require('../services/retellService');
 const router = express.Router();
+
+const PST_ZONE = 'America/Los_Angeles';
 
 /**
  * GET /api/dashboard/contacts
@@ -221,6 +224,31 @@ router.post('/call/:contactId', async (req, res) => {
 
     console.log(`[Dashboard] Manual ${callPhase} triggered for ${contact.firstName} ${contact.lastName}`);
     const callLog = await triggerCall(contact, callPhase);
+
+    // Update SchedulerState attempt counters (same as scheduled calls)
+    const state = await prisma.schedulerState.findUnique({
+      where: { contactId: contact.id },
+    });
+
+    if (state) {
+      const today = DateTime.now().setZone(PST_ZONE).startOf('day');
+      const lastCallDay = state.lastCallDate
+        ? DateTime.fromJSDate(state.lastCallDate).setZone(PST_ZONE).startOf('day')
+        : null;
+
+      const attemptsToday = lastCallDay && lastCallDay.equals(today)
+        ? state.attemptsToday + 1
+        : 1;
+
+      await prisma.schedulerState.update({
+        where: { id: state.id },
+        data: {
+          attemptsToday,
+          totalAttempts: state.totalAttempts + 1,
+          lastCallDate: new Date(),
+        },
+      });
+    }
 
     res.json({ success: true, callLogId: callLog.id, callPhase });
   } catch (error) {
