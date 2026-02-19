@@ -229,4 +229,38 @@ router.post('/call/:contactId', async (req, res) => {
   }
 });
 
+/**
+ * DELETE /api/dashboard/contact/:id
+ * Delete a contact and all associated call logs and scheduler state.
+ */
+router.delete('/contact/:id', async (req, res) => {
+  try {
+    const contactId = req.params.id;
+
+    const contact = await prisma.contact.findUnique({
+      where: { id: contactId },
+    });
+
+    if (!contact) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    // Delete scheduler state first (no cascade relation)
+    await prisma.schedulerState.deleteMany({
+      where: { contactId },
+    });
+
+    // Delete contact (call logs cascade automatically via onDelete: Cascade)
+    await prisma.contact.delete({
+      where: { id: contactId },
+    });
+
+    console.log(`[Dashboard] Deleted contact ${contact.firstName} ${contact.lastName} (${contactId})`);
+    res.json({ success: true, deletedId: contactId });
+  } catch (error) {
+    console.error('[Dashboard] Error deleting contact:', error.message);
+    res.status(500).json({ error: 'Failed to delete contact' });
+  }
+});
+
 module.exports = router;

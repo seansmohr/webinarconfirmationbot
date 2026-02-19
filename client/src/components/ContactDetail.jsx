@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useContactDetail, triggerManualCall } from '../hooks/useDashboard.js';
+import { useContactDetail, triggerManualCall, deleteContact } from '../hooks/useDashboard.js';
 import StatusBubble, { getCall1Variant, getCall2Variant } from './StatusBubble.jsx';
 import WebinarTagBadge from './WebinarTagBadge.jsx';
 
@@ -39,11 +39,25 @@ function outcomeColor(outcome) {
   return map[outcome] || 'text-gray-500';
 }
 
-export default function ContactDetail({ contactId, onClose }) {
+export default function ContactDetail({ contactId, onClose, onDeleted }) {
   const { data, loading } = useContactDetail(contactId);
   const [calling, setCalling] = useState(null); // 'FIRST_CALL' | 'SECOND_CALL' | null
   const [callError, setCallError] = useState(null);
   const [callSuccess, setCallSuccess] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (!window.confirm('Remove this contact from the dashboard? This will not delete them from GHL.')) return;
+    setDeleting(true);
+    try {
+      await deleteContact(contactId);
+      onDeleted?.(contactId);
+      onClose();
+    } catch (err) {
+      setCallError(err.message);
+      setDeleting(false);
+    }
+  }
 
   async function handleTriggerCall(callPhase) {
     setCalling(callPhase);
@@ -146,6 +160,13 @@ export default function ContactDetail({ contactId, onClose }) {
               className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {calling === 'SECOND_CALL' ? 'Calling...' : 'Trigger Call 2'}
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="ml-auto rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {deleting ? 'Removing...' : 'Remove Contact'}
             </button>
           </div>
           {callSuccess && (

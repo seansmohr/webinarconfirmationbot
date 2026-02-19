@@ -94,6 +94,20 @@ export async function triggerSync() {
   }
 }
 
+export async function deleteContact(contactId) {
+  try {
+    const res = await fetch(`${API_BASE}/contact/${contactId}`, {
+      method: 'DELETE',
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to delete contact');
+    return data;
+  } catch (error) {
+    console.error('Failed to delete contact:', error);
+    throw error;
+  }
+}
+
 export async function triggerManualCall(contactId, callPhase) {
   try {
     const res = await fetch(`/api/dashboard/call/${contactId}`, {

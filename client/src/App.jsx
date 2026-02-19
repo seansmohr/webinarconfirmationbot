@@ -137,6 +137,7 @@ export default function App() {
         <ContactDetail
           contactId={selectedContact}
           onClose={() => setSelectedContact(null)}
+          onDeleted={() => { refetchContacts(); refetchStats(); }}
         />
       )}
     </div>
