@@ -11,6 +11,7 @@ const WEBINAR_TAGS = [
 
 const STATUS_FILTERS = [
   { value: '', label: 'All Statuses' },
+  { value: 'scheduled', label: 'Scheduled' },
   { value: 'pending', label: 'Active / In Progress' },
   { value: 'connected', label: 'Connected' },
   { value: 'confirmed', label: 'Confirmed' },

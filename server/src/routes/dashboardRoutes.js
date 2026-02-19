@@ -112,7 +112,9 @@ router.get('/contacts', async (req, res) => {
 
     // Filter by status if requested
     let filtered = dashboardContacts;
-    if (status === 'connected') {
+    if (status === 'scheduled') {
+      filtered = dashboardContacts.filter((c) => !c.isComplete && c.nextCallTime);
+    } else if (status === 'connected') {
       filtered = dashboardContacts.filter((c) => c.call1.connected || c.call2.connected);
     } else if (status === 'confirmed') {
       filtered = dashboardContacts.filter((c) => c.call2.confirmed);
