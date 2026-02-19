@@ -20,7 +20,7 @@ async function triggerCall(contact, callPhase) {
     ? config.retell.agentIdCall1
     : config.retell.agentIdCall2;
 
-  const webinarLabel = getWebinarLabel(contact.webinarTag);
+  const webinarLabel = getWebinarLabel(contact.webinarTag, contact.timezone);
   const firstName = contact.firstName || 'there';
 
   // Dynamic variables passed to the Retell agent script

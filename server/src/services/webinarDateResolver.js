@@ -93,11 +93,28 @@ function shouldStopCalling(webinarTag, fromDate = null) {
 }
 
 /**
- * Get the webinar label for the agent script.
+ * Get the webinar label for the agent script, converted to the contact's timezone.
+ * E.g. "Tuesday 11:00 AM CST" or "Friday 5:00 PM PST"
+ *
+ * @param {string} webinarTag - The webinar tag (e.g. "tuesday 11am")
+ * @param {string} [contactTimezone] - IANA timezone (e.g. "America/New_York"). Defaults to CST.
  */
-function getWebinarLabel(webinarTag) {
+function getWebinarLabel(webinarTag, contactTimezone) {
   const schedule = config.webinarSchedule[webinarTag.toLowerCase()];
-  return schedule ? schedule.label : webinarTag;
+  if (!schedule) return webinarTag;
+
+  const tz = contactTimezone || 'America/Chicago';
+
+  // Build the webinar time in CST, then convert to the contact's timezone
+  const webinarDateCST = getNextWebinarDate(webinarTag);
+  const webinarInContactTZ = webinarDateCST.setZone(tz);
+
+  // Format: "Tuesday 11:00 AM CST"
+  const dayName = webinarInContactTZ.toFormat('EEEE');        // e.g. "Tuesday"
+  const time = webinarInContactTZ.toFormat('h:mm a');          // e.g. "11:00 AM"
+  const tzAbbrev = webinarInContactTZ.toFormat('ZZZZ');        // e.g. "CST", "EST", "PST"
+
+  return `${dayName} ${time} ${tzAbbrev}`;
 }
 
 module.exports = {
