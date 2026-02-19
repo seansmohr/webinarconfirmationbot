@@ -1,6 +1,7 @@
 const cron = require('node-cron');
-const { runSchedulerTick } = require('../services/callScheduler');
+const { runSchedulerTick, initializeContactSchedule } = require('../services/callScheduler');
 const { syncContacts } = require('../services/ghlService');
+const prisma = require('../db');
 
 /**
  * Initialize all cron jobs for the scheduler.
@@ -10,7 +11,7 @@ const { syncContacts } = require('../services/ghlService');
  * - The scheduler tick handles timezone conversion internally
  *
  * Additional jobs:
- * - Contact sync from GHL every 15 minutes
+ * - Contact sync from GHL every hour (with schedule initialization for new contacts)
  * - Minute-by-minute check for immediate calls (new registrations, 24h triggers)
  */
 function initializeCronJobs() {
@@ -25,11 +26,11 @@ function initializeCronJobs() {
     }
   });
 
-  // Sync contacts from GHL every 15 minutes
-  cron.schedule('*/15 * * * *', async () => {
-    console.log('[Cron] Running GHL contact sync...');
+  // Sync contacts from GHL every hour and initialize schedules for new contacts
+  cron.schedule('0 * * * *', async () => {
+    console.log('[Cron] Running hourly GHL contact sync...');
     try {
-      await syncContacts();
+      await syncAndInitializeSchedules();
     } catch (error) {
       console.error('[Cron] GHL sync error:', error.message);
     }
@@ -52,8 +53,37 @@ function initializeCronJobs() {
 
   console.log('[Cron] All cron jobs initialized.');
   console.log('[Cron] - Scheduler tick: every 5 minutes');
-  console.log('[Cron] - GHL sync: every 15 minutes');
+  console.log('[Cron] - GHL sync: every hour');
   console.log('[Cron] - Primary call windows: 9am, 1pm, 5pm PST');
+}
+
+/**
+ * Sync contacts from GHL and initialize schedules for any new contacts.
+ * This is the same logic as the manual sync button on the dashboard.
+ */
+async function syncAndInitializeSchedules() {
+  const result = await syncContacts();
+
+  // Initialize schedules for any contacts that don't have one yet
+  const contacts = await prisma.contact.findMany();
+  let schedulesCreated = 0;
+
+  for (const contact of contacts) {
+    const existing = await prisma.schedulerState.findUnique({
+      where: { contactId: contact.id },
+    });
+
+    if (!existing) {
+      await initializeContactSchedule(contact);
+      schedulesCreated++;
+    }
+  }
+
+  if (schedulesCreated > 0) {
+    console.log(`[Cron] Created ${schedulesCreated} new schedules from hourly sync.`);
+  }
+
+  return { ...result, schedulesCreated };
 }
 
 module.exports = { initializeCronJobs };

@@ -78,6 +78,9 @@ function shouldCallImmediately(registeredAt = null) {
 /**
  * Initialize scheduler state for a new contact.
  * Determines starting phase and first call time.
+ *
+ * Uses current time (not registeredAt) to decide if we should call immediately,
+ * since the contact may have been discovered by the hourly sync after registering.
  */
 async function initializeContactSchedule(contact) {
   const phase = determineCallPhase(contact.webinarTag, contact.registeredAt);
@@ -87,12 +90,12 @@ async function initializeContactSchedule(contact) {
   if (phase === 'SECOND_CALL') {
     // For Call 2, call immediately (24hr before webinar) then resume windows
     nextCallTime = new Date();
-  } else if (shouldCallImmediately(contact.registeredAt)) {
-    // For Call 1, if registered during business hours, call immediately
+  } else if (shouldCallImmediately()) {
+    // If current time is during business hours (9am-5pm PST), call ASAP
     nextCallTime = new Date();
   } else {
-    // Schedule for next call window
-    nextCallTime = getNextCallWindow(contact.registeredAt).toJSDate();
+    // Outside business hours - schedule for next call window
+    nextCallTime = getNextCallWindow().toJSDate();
   }
 
   const schedulerState = await prisma.schedulerState.upsert({
