@@ -1,7 +1,8 @@
 const Retell = require('retell-sdk');
 const config = require('../config');
 const prisma = require('../db');
-const { getWebinarLabel } = require('./webinarDateResolver');
+const { DateTime } = require('luxon');
+const { getWebinarLabel, get24HourCutoff } = require('./webinarDateResolver');
 const { addTagToContact } = require('./ghlService');
 
 const retellClient = new Retell({
@@ -125,7 +126,14 @@ async function processCallWebhook(webhookData) {
     if (disconnection_reason === 'voicemail_reached' || disconnection_reason === 'machine_detected' || inVoicemail) {
       outcome = 'VOICEMAIL';
     } else if (disconnection_reason === 'agent_hangup' || disconnection_reason === 'user_hangup') {
-      outcome = 'CONNECTED';
+      // Safety net: very short calls (< 5s) that ended by agent are likely
+      // undetected voicemail where the agent hung up before a real conversation.
+      const durationSec = webhookData.duration_ms ? Math.round(webhookData.duration_ms / 1000) : null;
+      if (durationSec !== null && durationSec < 5) {
+        outcome = 'VOICEMAIL';
+      } else {
+        outcome = 'CONNECTED';
+      }
     } else if (disconnection_reason === 'no_answer') {
       outcome = 'NO_ANSWER';
     } else if (disconnection_reason === 'busy') {
@@ -194,15 +202,31 @@ async function processCallWebhook(webhookData) {
       updateData.isComplete = true;
     }
 
+    // Fetch contact for phase advancement and GHL tagging
+    const contact = await prisma.contact.findUnique({
+      where: { id: callLog.contactId },
+      select: { ghlContactId: true, webinarTag: true },
+    });
+
+    // Immediately advance to Call 2 when Call 1 completes
+    if (isCall1 && contact && !updateData.isComplete) {
+      const cutoff24h = get24HourCutoff(contact.webinarTag);
+      const now = DateTime.now().setZone('America/Chicago');
+      updateData.currentPhase = 'SECOND_CALL';
+      updateData.attemptsToday = 0;
+      updateData.nextCallTime = now >= cutoff24h
+        ? new Date()
+        : cutoff24h.toJSDate();
+    }
+
+    // Mark complete when Call 2 is done (reached the person, regardless of answer)
+    if (!isCall1) {
+      updateData.isComplete = true;
+    }
+
     await prisma.schedulerState.updateMany({
       where: { contactId: callLog.contactId },
       data: updateData,
-    });
-
-    // Add confirmation tags back to GHL based on actual confirmation
-    const contact = await prisma.contact.findUnique({
-      where: { id: callLog.contactId },
-      select: { ghlContactId: true },
     });
 
     if (contact?.ghlContactId) {

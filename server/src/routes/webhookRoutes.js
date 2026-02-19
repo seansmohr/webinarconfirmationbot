@@ -59,8 +59,11 @@ router.post('/retell', async (req, res) => {
 
     const webhookData = req.body;
 
-    // Retell sends events for call lifecycle
-    if (webhookData.event === 'call_ended' || webhookData.event === 'call_analyzed') {
+    // Only process 'call_analyzed' events — they include the full post-call
+    // analysis (in_voicemail, custom_analysis_data).  Processing 'call_ended'
+    // too early would miss analysis data and can incorrectly mark voicemail
+    // calls as CONNECTED.
+    if (webhookData.event === 'call_analyzed') {
       const callData = webhookData.call || webhookData;
       await processCallWebhook(callData);
     }
