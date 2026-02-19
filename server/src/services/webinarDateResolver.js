@@ -93,6 +93,36 @@ function shouldStopCalling(webinarTag, fromDate = null) {
 }
 
 /**
+ * Get the most recent PAST occurrence of a webinar.
+ * Derived from getNextWebinarDate: the most recent past date is always
+ * one week before the next future date.
+ *
+ * Example: If it's Saturday and the webinar is "friday 5pm",
+ * getNextWebinarDate returns next Friday → minus 1 week = yesterday (this Friday).
+ */
+function getMostRecentWebinarDate(webinarTag, fromDate = null) {
+  const nextWebinar = getNextWebinarDate(webinarTag, fromDate);
+  return nextWebinar.minus({ weeks: 1 });
+}
+
+/**
+ * Check if we're in the post-webinar freeze period.
+ * Returns true if the most recent webinar occurred within the last 2.5 hours.
+ * During this window, calls should be paused to allow GHL to add
+ * "missed webinar" / "attended webinar" tags.
+ */
+function isInPostWebinarFreeze(webinarTag, fromDate = null) {
+  const now = fromDate
+    ? DateTime.fromJSDate(fromDate).setZone('America/Chicago')
+    : DateTime.now().setZone('America/Chicago');
+
+  const mostRecentWebinar = getMostRecentWebinarDate(webinarTag, fromDate);
+  const hoursSince = now.diff(mostRecentWebinar, 'hours').hours;
+
+  return hoursSince >= 0 && hoursSince < 2.5;
+}
+
+/**
  * Get the webinar label for the agent script, converted to the contact's timezone.
  * E.g. "Tuesday 11:00 AM CST" or "Friday 5:00 PM PST"
  *
@@ -123,5 +153,7 @@ module.exports = {
   getStopCallingCutoff,
   determineCallPhase,
   shouldStopCalling,
+  getMostRecentWebinarDate,
+  isInPostWebinarFreeze,
   getWebinarLabel,
 };
