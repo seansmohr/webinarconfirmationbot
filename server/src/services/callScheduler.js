@@ -1,7 +1,7 @@
 const { DateTime } = require('luxon');
 const prisma = require('../db');
 const config = require('../config');
-const { determineCallPhase, shouldStopCalling, get24HourCutoff, getNextWebinarDate } = require('./webinarDateResolver');
+const { determineCallPhase, shouldStopCalling, get24HourCutoff, getNextWebinarDate, isInPostWebinarFreeze, getMostRecentWebinarDate } = require('./webinarDateResolver');
 const { triggerCall } = require('./retellService');
 
 const PST_ZONE = 'America/Los_Angeles';
@@ -172,6 +172,39 @@ async function processContactCall(state) {
   // Check if we should stop calling (30 min before webinar)
   if (shouldStopCalling(contact.webinarTag)) {
     console.log(`[Scheduler] Webinar imminent for ${contact.firstName}, stopping calls.`);
+    await prisma.schedulerState.update({
+      where: { id: state.id },
+      data: { isComplete: true },
+    });
+    return;
+  }
+
+  // Check if we're in the post-webinar freeze period (0–2.5h after webinar).
+  // During this window, GHL is adding "missed webinar" / "attended webinar" tags.
+  // We pause calls and reschedule to after the freeze ends.
+  if (isInPostWebinarFreeze(contact.webinarTag)) {
+    const freezeEnd = getMostRecentWebinarDate(contact.webinarTag).plus({ hours: 2, minutes: 30 });
+    console.log(
+      `[Scheduler] Post-webinar freeze for ${contact.firstName}, ` +
+      `pausing calls until ${freezeEnd.toISO()}.`
+    );
+    await prisma.schedulerState.update({
+      where: { id: state.id },
+      data: { nextCallTime: freezeEnd.toJSDate() },
+    });
+    return;
+  }
+
+  // Safety check: if the contact registered before the most recent past webinar,
+  // their webinar has already happened. Don't call — the hourly sync will check
+  // GHL tags and mark them complete.
+  const mostRecentWebinar = getMostRecentWebinarDate(contact.webinarTag);
+  const registeredDT = DateTime.fromJSDate(contact.registeredAt).setZone('America/Chicago');
+  if (registeredDT < mostRecentWebinar) {
+    console.log(
+      `[Scheduler] Contact ${contact.firstName} registered before webinar on ` +
+      `${mostRecentWebinar.toISO()}, webinar has passed. Marking complete.`
+    );
     await prisma.schedulerState.update({
       where: { id: state.id },
       data: { isComplete: true },

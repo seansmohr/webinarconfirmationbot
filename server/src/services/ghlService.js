@@ -7,6 +7,10 @@ const VALID_WEBINAR_TAGS = Object.keys(config.webinarSchedule);
 // Only sync these tags during testing — set to null to sync all valid webinar tags
 const ACTIVE_WEBINAR_TAGS = ['friday 5pm'];
 
+// Tags that GHL adds after a webinar completes (~2 hours post-webinar).
+// Used to detect that a contact's webinar has passed and stop calling them.
+const POST_WEBINAR_TAGS = ['missed webinar', 'attended webinar'];
+
 const ghlApi = axios.create({
   baseURL: config.ghl.baseUrl,
   headers: {
@@ -100,6 +104,19 @@ async function getContact(contactId) {
 }
 
 /**
+ * Check if a GHL contact's tags include any post-webinar tags
+ * ("missed webinar", "attended webinar"). Returns the matched tag or null.
+ */
+function checkForPostWebinarTag(tags) {
+  if (!tags || !Array.isArray(tags) || tags.length === 0) return null;
+  for (const t of tags) {
+    const normalized = t.toLowerCase().trim();
+    if (POST_WEBINAR_TAGS.includes(normalized)) return normalized;
+  }
+  return null;
+}
+
+/**
  * Extract the webinar tag from a GHL contact's tags array.
  * Finds the first valid webinar tag among possibly multiple tags
  * (e.g. a contact may also have "confirmed webinar registration").
@@ -176,6 +193,9 @@ async function syncContacts() {
   let synced = 0;
   let skipped = 0;
 
+  // Track contacts that have post-webinar tags (e.g. "missed webinar", "attended webinar")
+  const contactsWithPostWebinarTags = [];
+
   for (const ghlContact of ghlContacts) {
     const name = `${ghlContact.firstName || ''} ${ghlContact.lastName || ''}`.trim();
     console.log(`[GHL Sync] Contact "${name}" (${ghlContact.id}) — raw tags:`, JSON.stringify(ghlContact.tags));
@@ -184,6 +204,17 @@ async function syncContacts() {
     if (!webinarTag) {
       skipped++;
       continue;
+    }
+
+    // Check if GHL has added a post-webinar tag to this contact
+    const postWebinarTag = checkForPostWebinarTag(ghlContact.tags);
+    if (postWebinarTag) {
+      console.log(`[GHL Sync]   → post-webinar tag detected: "${postWebinarTag}"`);
+      contactsWithPostWebinarTags.push({
+        ghlContactId: ghlContact.id,
+        name,
+        postWebinarTag,
+      });
     }
 
     const contactData = {
@@ -210,11 +241,14 @@ async function syncContacts() {
   }
 
   console.log(`[GHL Sync] Done. Synced: ${synced}, Skipped (no tag): ${skipped}`);
+  if (contactsWithPostWebinarTags.length > 0) {
+    console.log(`[GHL Sync] ${contactsWithPostWebinarTags.length} contacts have post-webinar tags.`);
+  }
 
   // Clean up contacts that don't match the active filter
   const removed = await pruneInactiveContacts(activeTags);
 
-  return { synced, skipped, removed };
+  return { synced, skipped, removed, contactsWithPostWebinarTags };
 }
 
 /**
@@ -253,6 +287,7 @@ module.exports = {
   fetchContacts,
   getContact,
   extractWebinarTag,
+  checkForPostWebinarTag,
   addTagToContact,
   syncContacts,
   processWebhookContact,

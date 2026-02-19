@@ -59,6 +59,9 @@ function initializeCronJobs() {
 
 /**
  * Sync contacts from GHL and initialize schedules for any new contacts.
+ * Also marks contacts complete if GHL has added post-webinar tags
+ * ("missed webinar", "attended webinar").
+ *
  * This is the same logic as the manual sync button on the dashboard.
  */
 async function syncAndInitializeSchedules() {
@@ -83,7 +86,38 @@ async function syncAndInitializeSchedules() {
     console.log(`[Cron] Created ${schedulesCreated} new schedules from hourly sync.`);
   }
 
-  return { ...result, schedulesCreated };
+  // Mark contacts complete if GHL has added post-webinar tags.
+  // syncContacts() already detected which GHL contacts have "missed webinar"
+  // or "attended webinar" tags — now find their local records and mark complete.
+  let postWebinarCompleted = 0;
+  const postWebinarContacts = result.contactsWithPostWebinarTags || [];
+
+  for (const { ghlContactId, name, postWebinarTag } of postWebinarContacts) {
+    const localContact = await prisma.contact.findUnique({
+      where: { ghlContactId },
+    });
+    if (!localContact) continue;
+
+    const state = await prisma.schedulerState.findUnique({
+      where: { contactId: localContact.id },
+    });
+    if (!state || state.isComplete) continue;
+
+    await prisma.schedulerState.update({
+      where: { id: state.id },
+      data: { isComplete: true },
+    });
+    postWebinarCompleted++;
+    console.log(
+      `[Cron] Marked "${name}" complete — GHL tag "${postWebinarTag}" detected (webinar passed).`
+    );
+  }
+
+  if (postWebinarCompleted > 0) {
+    console.log(`[Cron] Completed ${postWebinarCompleted} contacts with post-webinar tags.`);
+  }
+
+  return { ...result, schedulesCreated, postWebinarCompleted };
 }
 
 module.exports = { initializeCronJobs };
