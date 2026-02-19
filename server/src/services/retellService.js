@@ -151,6 +151,17 @@ async function processCallWebhook(webhookData) {
   const callDisposition = customData.call_disposition || null;
   const declineReason = customData.decline_reason || null;
 
+  // Google Voice / call screening detection:
+  // If the agent only interacted with an automated screening system (e.g. Google Voice
+  // asking "Who's calling?") and never reached the actual person, treat as NO_ANSWER.
+  if (outcome === 'CONNECTED' && customData.reached_person === false) {
+    console.log(
+      `[Retell Webhook] Call ${call_id}: Google Voice / call screening detected — ` +
+      `agent never reached actual person. Treating as NO_ANSWER.`
+    );
+    outcome = 'NO_ANSWER';
+  }
+
   // Determine confirmation status based on call phase and custom analysis fields
   let confirmationStatus = null;
   if (outcome === 'CONNECTED') {
