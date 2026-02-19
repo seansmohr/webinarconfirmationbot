@@ -24,6 +24,101 @@ const ghlApi = axios.create({
  * Uses the search/filter contacts endpoint.
  */
 async function fetchContacts() {
+  // If a pipeline ID is configured, only fetch contacts from that pipeline
+  if (config.ghl.pipelineId) {
+    return fetchContactsByPipeline(config.ghl.pipelineId);
+  }
+
+  return fetchAllContacts();
+}
+
+/**
+ * Fetch contacts scoped to a specific GHL pipeline.
+ * Uses the opportunities/search endpoint to find contacts in the pipeline,
+ * then fetches full contact details for each.
+ */
+async function fetchContactsByPipeline(pipelineId) {
+  try {
+    const contactIds = new Set();
+    let startAfterId = null;
+    let page = 0;
+    const MAX_PAGES = 100;
+
+    console.log(`[GHL Fetch] Fetching contacts from pipeline: ${pipelineId}`);
+
+    do {
+      page++;
+      const params = {
+        location_id: config.ghl.locationId,
+        pipeline_id: pipelineId,
+        limit: 100,
+      };
+
+      if (startAfterId) {
+        params.startAfterId = startAfterId;
+      }
+
+      console.log(`[GHL Fetch] Pipeline page ${page} — startAfterId: ${startAfterId || '(first page)'}`);
+      const response = await ghlApi.get('/opportunities/search', { params });
+      const data = response.data;
+
+      const opportunities = data.opportunities || [];
+      console.log(`[GHL Fetch] Pipeline page ${page} returned ${opportunities.length} opportunities`);
+
+      if (opportunities.length === 0) break;
+
+      for (const opp of opportunities) {
+        if (opp.contact?.id) {
+          contactIds.add(opp.contact.id);
+        }
+      }
+
+      // Determine the next cursor
+      const prevCursor = startAfterId;
+      if (data.meta?.nextPageUrl) {
+        try {
+          const url = new URL(data.meta.nextPageUrl);
+          startAfterId = url.searchParams.get('startAfterId') || url.searchParams.get('startAfter') || null;
+        } catch {
+          startAfterId = null;
+        }
+      }
+      if (!startAfterId) {
+        startAfterId = data.meta?.startAfterId || opportunities[opportunities.length - 1].id;
+      }
+
+      if (startAfterId === prevCursor) {
+        console.warn(`[GHL Fetch] Pipeline cursor did not advance (stuck at ${startAfterId}), stopping.`);
+        break;
+      }
+
+      if (!data.meta?.nextPageUrl) break;
+    } while (page < MAX_PAGES);
+
+    // Fetch full contact details for each unique contact
+    console.log(`[GHL Fetch] Found ${contactIds.size} unique contacts in pipeline. Fetching full details...`);
+    const contacts = [];
+    for (const contactId of contactIds) {
+      try {
+        const contact = await getContact(contactId);
+        contacts.push(contact);
+      } catch (err) {
+        console.warn(`[GHL Fetch] Failed to fetch contact ${contactId}:`, err.message);
+      }
+    }
+
+    console.log(`[GHL Fetch] Total contacts fetched from pipeline: ${contacts.length}`);
+    return contacts;
+  } catch (error) {
+    console.error('Error fetching contacts from GHL pipeline:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
+/**
+ * Fetch all contacts from the GHL location (original behavior, no pipeline filter).
+ */
+async function fetchAllContacts() {
   try {
     const contacts = [];
     let startAfterId = null;

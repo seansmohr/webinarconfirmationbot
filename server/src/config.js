@@ -4,6 +4,7 @@ module.exports = {
   ghl: {
     apiKey: process.env.GHL_API_KEY,
     locationId: process.env.GHL_LOCATION_ID,
+    pipelineId: process.env.GHL_PIPELINE_ID || null,
     baseUrl: 'https://services.leadconnectorhq.com',
   },
   retell: {
