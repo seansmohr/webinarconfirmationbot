@@ -42,6 +42,12 @@ app.listen(config.server.port, () => {
   console.log(`[Server] Webinar Confirmation Bot running on port ${config.server.port}`);
   console.log(`[Server] Environment: ${config.server.nodeEnv}`);
 
+  if (config.ghl.pipelineId) {
+    console.log(`[Server] Pipeline filter: ${config.ghl.pipelineId}`);
+  } else {
+    console.warn('[Server] ⚠ WARNING: No GHL_PIPELINE_ID set — syncing ALL contacts from the location. Set GHL_PIPELINE_ID to scope to a specific pipeline.');
+  }
+
   // Initialize cron jobs
   initializeCronJobs();
 
