@@ -1,7 +1,7 @@
 const { DateTime } = require('luxon');
 const prisma = require('../db');
 const config = require('../config');
-const { determineCallPhase, shouldStopCalling, get24HourCutoff, getNextWebinarDate, isInPostWebinarFreeze, getMostRecentWebinarDate } = require('./webinarDateResolver');
+const { determineCallPhase, shouldStopCalling, get24HourCutoff, isInPostWebinarFreeze, getMostRecentWebinarDate, getCall2StopWindow } = require('./webinarDateResolver');
 const { triggerCall } = require('./retellService');
 
 const PST_ZONE = 'America/Los_Angeles';
@@ -88,8 +88,8 @@ async function initializeContactSchedule(contact) {
   let nextCallTime;
 
   if (phase === 'SECOND_CALL') {
-    // For Call 2, call immediately (24hr before webinar) then resume windows
-    nextCallTime = new Date();
+    // For Call 2, start at next valid call window (do not call immediately outside windows)
+    nextCallTime = getNextCallWindow().toJSDate();
   } else if (shouldCallImmediately()) {
     // If current time is during business hours (9am-5pm PST), call ASAP
     nextCallTime = new Date();
@@ -169,8 +169,24 @@ async function processContactCall(state) {
     return;
   }
 
-  // Check if we should stop calling (30 min before webinar)
-  if (shouldStopCalling(contact.webinarTag)) {
+  // Check if we should stop calling based on phase rules.
+  // - Call 1: hard stop 30 minutes before webinar
+  // - Call 2: stop at the last call interval before webinar start
+  if (state.currentPhase === 'SECOND_CALL') {
+    const call2Stop = getCall2StopWindow(contact.webinarTag, CALL_WINDOWS);
+    const nowPST = DateTime.now().setZone(PST_ZONE);
+    if (nowPST > call2Stop) {
+      console.log(
+        `[Scheduler] Call 2 stop window passed for ${contact.firstName} ` +
+        `(stop=${call2Stop.toISO()}), marking complete.`
+      );
+      await prisma.schedulerState.update({
+        where: { id: state.id },
+        data: { isComplete: true },
+      });
+      return;
+    }
+  } else if (shouldStopCalling(contact.webinarTag)) {
     console.log(`[Scheduler] Webinar imminent for ${contact.firstName}, stopping calls.`);
     await prisma.schedulerState.update({
       where: { id: state.id },
@@ -239,7 +255,7 @@ async function processContactCall(state) {
         data: {
           currentPhase: 'SECOND_CALL',
           attemptsToday: 0,
-          nextCallTime: new Date(),
+          nextCallTime: getNextCallWindow().toJSDate(),
         },
       });
     } else {
@@ -315,23 +331,20 @@ async function processContactCall(state) {
  */
 function calculateNextCallTime(contact, state) {
   const now = DateTime.now().setZone(PST_ZONE);
-  const webinarDate = getNextWebinarDate(contact.webinarTag);
-  const stopCutoff = webinarDate.minus({ minutes: 30 });
 
-  // For Call 2, check if we need a "30 min before" final call
+  // For Call 2, stop at the last regular call interval before webinar start.
   if (state.currentPhase === 'SECOND_CALL') {
-    const thirtyMinBefore = webinarDate.minus({ minutes: 30 }).setZone(PST_ZONE);
-
-    // Get next regular window
+    const call2StopWindow = getCall2StopWindow(contact.webinarTag, CALL_WINDOWS);
     const nextWindow = getNextCallWindow();
 
-    // If the next window is after the webinar stop cutoff
-    if (nextWindow >= stopCutoff.setZone(PST_ZONE)) {
-      // Schedule for 30 min before if we haven't passed it
-      if (now < thirtyMinBefore) {
-        return thirtyMinBefore;
-      }
-      return null; // Done
+    // If we have already passed the stop window, no more Call 2 attempts.
+    if (now > call2StopWindow) {
+      return null;
+    }
+
+    // If next regular window would be after the stop window, no more attempts.
+    if (nextWindow > call2StopWindow) {
+      return null;
     }
 
     return nextWindow;

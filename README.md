@@ -32,12 +32,12 @@ Voice agent system that automates confirmation calls for the **Medicare 101 Work
 ### Call 2 — 24-Hour Confirmation
 - Fires 24 hours before webinar start time
 - Confirms attendance, reminds about webinar link delivery
-- Retries at 9am, 1pm, 5pm PST + 30 minutes before webinar (final call)
+- Retries at 9am, 1pm, 5pm PST until the last call window before webinar start time (e.g., 1pm final call for a 5pm webinar)
 
 ### Edge Cases
 - If registered <24hrs before webinar → skips Call 1, goes straight to Call 2
 - If registered after 5pm PST → first call deferred to 9am next day
-- All calling stops 30 minutes before webinar start time
+- Call 1 stops 30 minutes before webinar start time; Call 2 stops at the last call window before webinar start time
 
 ## Webinar Schedule
 

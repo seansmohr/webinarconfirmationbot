@@ -42,6 +42,11 @@ app.listen(config.server.port, () => {
   console.log(`[Server] Webinar Confirmation Bot running on port ${config.server.port}`);
   console.log(`[Server] Environment: ${config.server.nodeEnv}`);
 
+
+  if (config.retell.agentIdCall1 && config.retell.agentIdCall2 && config.retell.agentIdCall1 === config.retell.agentIdCall2) {
+    console.warn('[Server] ⚠ WARNING: RETELL_AGENT_ID_CALL1 and RETELL_AGENT_ID_CALL2 are identical. Call phases may use the same script.');
+  }
+
   if (config.ghl.pipelineId) {
     console.log(`[Server] Pipeline filter: ${config.ghl.pipelineId}`);
   } else {

@@ -149,7 +149,7 @@ async function processCallWebhook(webhookData) {
   // Extract custom analysis fields from the Retell post-call analysis
   const customData = call_analysis?.custom_analysis_data || {};
   const callDisposition = customData.call_disposition || null;
-  const declineReason = customData.decline_reason || null;
+  const declineReason = customData.decline_reason || customData.reason_if_declined || null;
 
   // Google Voice / call screening detection:
   // If the agent only interacted with an automated screening system (e.g. Google Voice
@@ -166,19 +166,19 @@ async function processCallWebhook(webhookData) {
   let confirmationStatus = null;
   if (outcome === 'CONNECTED') {
     if (callLog.callPhase === 'FIRST_CALL') {
-      // Call 1 agent uses "registration_confirmed" boolean
-      if (customData.registration_confirmed === true) {
-        confirmationStatus = 'CONFIRMED';
-      } else {
-        confirmationStatus = 'NOT_CONFIRMED';
-      }
+      // Call 1 agent may use either "registration_confirmed" or generic "confirmed".
+      const registrationConfirmed =
+        customData.registration_confirmed === true ||
+        customData.confirmed === true;
+      confirmationStatus = registrationConfirmed ? 'CONFIRMED' : 'NOT_CONFIRMED';
     } else if (callLog.callPhase === 'SECOND_CALL') {
-      // Call 2 agent uses "confirmed_attendance" boolean
-      if (customData.confirmed_attendance === true) {
-        confirmationStatus = 'CONFIRMED';
-      } else {
-        confirmationStatus = 'NOT_CONFIRMED';
-      }
+      // Call 2 script uses "confirmed" (and may include attended_status);
+      // keep backward compatibility with "confirmed_attendance".
+      const attendanceConfirmed =
+        customData.confirmed_attendance === true ||
+        customData.confirmed === true ||
+        customData.attended_status === 'confirmed';
+      confirmationStatus = attendanceConfirmed ? 'CONFIRMED' : 'NOT_CONFIRMED';
     }
   }
 
@@ -230,8 +230,10 @@ async function processCallWebhook(webhookData) {
         : cutoff24h.toJSDate();
     }
 
-    // Mark complete when Call 2 is done (reached the person, regardless of answer)
-    if (!isCall1) {
+    // For Call 2, only mark complete on explicit confirmation.
+    // If connected but not confirmed, keep schedule active for retries until
+    // the scheduler's phase-specific stop window.
+    if (!isCall1 && confirmationStatus === 'CONFIRMED') {
       updateData.isComplete = true;
     }
 
@@ -242,10 +244,10 @@ async function processCallWebhook(webhookData) {
 
     if (contact?.ghlContactId) {
       if (isCall1 && confirmationStatus === 'CONFIRMED') {
-        addTagToContact(contact.ghlContactId, 'confirmed webinar registration');
+        await addTagToContact(contact.ghlContactId, 'confirmed webinar registration');
       }
       if (!isCall1 && confirmationStatus === 'CONFIRMED') {
-        addTagToContact(contact.ghlContactId, 'confirmed webinar attendance');
+        await addTagToContact(contact.ghlContactId, 'confirmed webinar attendance');
       }
     }
   }
