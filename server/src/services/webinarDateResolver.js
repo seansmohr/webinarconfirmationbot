@@ -93,6 +93,42 @@ function shouldStopCalling(webinarTag, fromDate = null) {
 }
 
 /**
+ * Get the final allowed Call 2 attempt time based on call windows.
+ *
+ * Rule: stop Call 2 at the last call interval BEFORE webinar start time.
+ * Example: webinar at 5:00 PM PST and windows [9, 13, 17] => final attempt is 1:00 PM PST.
+ *
+ * @param {string} webinarTag
+ * @param {number[]} callWindowsPST - PST hours in 24h format (e.g. [9, 13, 17])
+ * @param {Date} [fromDate]
+ */
+function getCall2StopWindow(webinarTag, callWindowsPST = [9, 13, 17], fromDate = null) {
+  const webinarDateCST = getNextWebinarDate(webinarTag, fromDate);
+  const webinarPST = webinarDateCST.setZone('America/Los_Angeles');
+
+  // Find same-day windows that occur strictly before webinar start time.
+  const sameDayCandidateHours = callWindowsPST
+    .filter((h) => h < webinarPST.hour)
+    .sort((a, b) => b - a);
+
+  if (sameDayCandidateHours.length > 0) {
+    return webinarPST.set({
+      hour: sameDayCandidateHours[0],
+      minute: 0,
+      second: 0,
+      millisecond: 0,
+    });
+  }
+
+  // If webinar starts before the first daily window, use the previous day's
+  // latest window.
+  const latestDailyWindow = [...callWindowsPST].sort((a, b) => b - a)[0];
+  return webinarPST
+    .minus({ days: 1 })
+    .set({ hour: latestDailyWindow, minute: 0, second: 0, millisecond: 0 });
+}
+
+/**
  * Get the most recent PAST occurrence of a webinar.
  * Derived from getNextWebinarDate: the most recent past date is always
  * one week before the next future date.
@@ -153,6 +189,7 @@ module.exports = {
   getStopCallingCutoff,
   determineCallPhase,
   shouldStopCalling,
+  getCall2StopWindow,
   getMostRecentWebinarDate,
   isInPostWebinarFreeze,
   getWebinarLabel,
